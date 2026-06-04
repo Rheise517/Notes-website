@@ -846,10 +846,13 @@ let recognition       = null;
 let voiceModeOn       = false;
 let isListening       = false;
 let isSpeaking        = false;
-let sessionActive     = false; // true while user is in a voice session
-let sessionTranscript = '';    // text preserved across unexpected browser restarts
+let sessionActive     = false;
+let sessionTranscript = '';
 let silenceTimer      = null;
-const SILENCE_MS      = 5000;  // ms of silence before mic auto-stops (no auto-send)
+const SILENCE_MS      = 5000;
+// Android Chrome fires cumulative finals (each entry = all words so far).
+// Desktop Chrome fires incremental finals (each entry = only new words).
+const IS_ANDROID = /Android/i.test(navigator.userAgent);
 
 function toggleVoiceMode() {
   voiceModeOn = !voiceModeOn;
@@ -888,12 +891,20 @@ function _beginRecognition() {
   };
 
   recognition.onresult = (e) => {
-    // Finals only — avoids mobile Chrome quirk where interim duplicates finalized words
-    let fullFinal = '';
-    for (let i = 0; i < e.results.length; i++) {
-      if (e.results[i].isFinal) fullFinal += e.results[i][0].transcript + ' ';
+    let text = '';
+    if (IS_ANDROID) {
+      // Each result entry contains the full cumulative transcript — just use the last one
+      for (let i = e.results.length - 1; i >= 0; i--) {
+        if (e.results[i].isFinal) { text = e.results[i][0].transcript.trim(); break; }
+      }
+    } else {
+      // Desktop: each entry contains only new words — sum them all
+      for (let i = 0; i < e.results.length; i++) {
+        if (e.results[i].isFinal) text += e.results[i][0].transcript + ' ';
+      }
+      text = text.trim();
     }
-    if (fullFinal) document.getElementById('chat-in').value = (sessionTranscript + fullFinal).trim();
+    if (text) document.getElementById('chat-in').value = (sessionTranscript + text).trim();
 
     clearTimeout(silenceTimer);
     silenceTimer = setTimeout(() => {
