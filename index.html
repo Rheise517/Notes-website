@@ -578,6 +578,8 @@ const TRASH_KEY   = 'pf_deleted_notes';
 let deletedNotes  = [];
 let trashOpen     = false;
 
+let reminders = [];
+
 /* ══════════════════════════════
    HELPERS
 ══════════════════════════════ */
@@ -792,6 +794,57 @@ async function restoreNote(idx) {
 }
 
 /* ══════════════════════════════
+   REMINDERS
+══════════════════════════════ */
+async function loadReminders() {
+  try {
+    const r = await fetch('/api/reminders');
+    if (r.ok) reminders = await r.json();
+  } catch {}
+  return reminders;
+}
+
+async function createReminder(message, remind_at, recurrence_days) {
+  const r = await fetch('/api/reminders', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, remind_at, recurrence_days }),
+  });
+  if (r.ok) await loadReminders();
+  return r.ok;
+}
+
+async function cancelReminder(id) {
+  const r = await fetch(`/api/reminders?id=${id}`, { method: 'PATCH' });
+  if (r.ok) await loadReminders();
+  return r.ok;
+}
+
+async function checkInAppReminders() {
+  const now = new Date();
+  const due = reminders.filter(r =>
+    r.active &&
+    new Date(r.next_fire_at) <= now &&
+    (!r.last_sent_at || new Date(r.last_sent_at) < new Date(r.next_fire_at))
+  );
+  for (const r of due) {
+    showToast(`Reminder: ${r.message}`);
+    if (window.Notification && Notification.permission === 'granted') {
+      new Notification('PlayForge Notes', { body: r.message, icon: '/favicon.ico' });
+    }
+  }
+  if (due.length) await loadReminders();
+}
+
+function fmtReminder(remind_at, recurrence_days) {
+  const d = new Date(remind_at);
+  const when = d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  if (!recurrence_days) return when;
+  const labels = { 1: 'daily', 2: 'every other day', 7: 'weekly', 14: 'biweekly' };
+  return `${when} · repeats ${labels[recurrence_days] || `every ${recurrence_days} days`}`;
+}
+
+/* ══════════════════════════════
    MOBILE DRAWERS
 ══════════════════════════════ */
 function isMobile() { return window.innerWidth <= 900; }
@@ -847,7 +900,7 @@ async function sendMsg() {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: history, notes, clientDateTime: new Date().toLocaleString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric', hour:'numeric', minute:'2-digit', hour12:true }) }),
+      body: JSON.stringify({ messages: history, notes, reminders, clientDateTime: new Date().toLocaleString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric', hour:'numeric', minute:'2-digit', hour12:true }) }),
     });
     const data = await res.json();
     typing.remove();
@@ -882,6 +935,16 @@ async function sendMsg() {
         } else if (act.type === 'delete_note') {
           const gone = await deleteNote(act.id);
           if (gone) applied.push({ icon: '🗑', label: `Deleted "${gone.title}"` });
+        } else if (act.type === 'create_reminder') {
+          // Request notification permission on first reminder
+          if (window.Notification && Notification.permission === 'default') {
+            Notification.requestPermission();
+          }
+          const ok = await createReminder(act.message, act.remind_at, act.recurrence_days || null);
+          if (ok) applied.push({ icon: '⏰', label: `Reminder: "${act.message}" — ${fmtReminder(act.remind_at, act.recurrence_days)}` });
+        } else if (act.type === 'cancel_reminder') {
+          const ok = await cancelReminder(act.id);
+          if (ok) applied.push({ icon: '✓', label: 'Reminder cancelled' });
         }
       } catch(e) { console.warn('Action error', e); }
     }
@@ -1101,6 +1164,8 @@ document.addEventListener('visibilitychange', () => {
   loadDeletedNotes();
   renderTrash();
   await loadNotes();
+  await loadReminders();
+  setInterval(async () => { await loadReminders(); checkInAppReminders(); }, 60000);
   const loadEl = document.getElementById('loading');
   loadEl.classList.add('fade');
   setTimeout(() => loadEl.remove(), 350);

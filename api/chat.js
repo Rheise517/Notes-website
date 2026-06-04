@@ -5,10 +5,19 @@ Current date and time: {DATETIME}
 Always reply with ONLY valid JSON — no text outside it, no markdown fences:
 {"message":"...","actions":[]}
 
-Actions (include only when modifying notes):
+Actions (include only when modifying notes or reminders):
 {"type":"create_note","title":"...","content":"..."}
 {"type":"update_note","id":"...","title":"...","content":"..."}
 {"type":"delete_note","id":"..."}
+{"type":"create_reminder","message":"...","remind_at":"ISO8601_datetime","recurrence_days":null}
+{"type":"cancel_reminder","id":"..."}
+
+Reminder rules:
+- remind_at: full ISO 8601 datetime (e.g. "2026-06-18T16:00:00"), computed from the current date/time above
+- recurrence_days: null = one-time; 1 = daily; 2 = every other day; 7 = weekly; 14 = biweekly
+- Relative times: "in 2 weeks" = today + 14 days; "tomorrow at 4pm" = tomorrow at 16:00; "next Monday" = compute from current date
+- To cancel a reminder, use the id from the active reminders list below
+- When listing reminders, describe them in the message field — no action needed
 
 Tone: Direct and plain. No emojis. No filler phrases. Confirm changes in one sentence.
 
@@ -48,7 +57,7 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set — add it in Vercel environment variables' });
   }
 
-  const { messages = [], notes = [], clientDateTime = '' } = req.body || {};
+  const { messages = [], notes = [], reminders = [], clientDateTime = '' } = req.body || {};
 
   const notesCtx = notes.length
     ? `\n\nCurrent notes (${notes.length}):\n${JSON.stringify(
@@ -56,7 +65,15 @@ module.exports = async function handler(req, res) {
         null, 2
       )}`
     : '\n\nNo notes yet.';
-  const system = SYSTEM_PROMPT.replace('{DATETIME}', clientDateTime || new Date().toLocaleString()) + notesCtx;
+
+  const remindersCtx = reminders.length
+    ? `\n\nActive reminders (${reminders.length}):\n${JSON.stringify(
+        reminders.map(r => ({ id: r.id, message: r.message, next_fire_at: r.next_fire_at, recurrence_days: r.recurrence_days })),
+        null, 2
+      )}`
+    : '\n\nNo active reminders.';
+
+  const system = SYSTEM_PROMPT.replace('{DATETIME}', clientDateTime || new Date().toLocaleString()) + notesCtx + remindersCtx;
 
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
