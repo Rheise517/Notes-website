@@ -229,7 +229,7 @@
       flex: 1; background: var(--elevated); border: 1px solid var(--border);
       border-radius: 11px; padding: 9px 13px; color: var(--text);
       font-family: 'Karla', sans-serif; font-size: 13px; resize: none; outline: none;
-      min-height: 40px; max-height: 200px; line-height: 1.5; transition: border-color 0.15s;
+      min-height: 88px; max-height: 200px; line-height: 1.5; transition: border-color 0.15s;
     }
     #chat-in:focus { border-color: rgba(255,95,46,0.5); }
     #chat-in::placeholder { color: var(--dim); }
@@ -538,7 +538,7 @@
   </div>
   <div id="chat-foot">
     <div id="chat-row">
-      <textarea id="chat-in" placeholder="Ask me anything about your notes…" rows="1"></textarea>
+      <textarea id="chat-in" placeholder="Ask me anything about your notes…" rows="3"></textarea>
       <button id="mic-btn" onclick="toggleMic()" title="Voice input">
         <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0014 0M12 19v3M8 22h8"/></svg>
       </button>
