@@ -885,14 +885,12 @@ function _beginRecognition() {
   };
 
   recognition.onresult = (e) => {
-    // Always rebuild from ALL results to prevent duplicate text on mobile
+    // Finals only — avoids mobile Chrome quirk where interim duplicates finalized words
     let fullFinal = '';
-    let interim   = '';
     for (let i = 0; i < e.results.length; i++) {
       if (e.results[i].isFinal) fullFinal += e.results[i][0].transcript + ' ';
-      else                       interim   += e.results[i][0].transcript;
     }
-    document.getElementById('chat-in').value = (sessionTranscript + fullFinal + interim).trim();
+    if (fullFinal) document.getElementById('chat-in').value = (sessionTranscript + fullFinal).trim();
 
     clearTimeout(silenceTimer);
     silenceTimer = setTimeout(() => {
