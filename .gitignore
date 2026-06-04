@@ -1,0 +1,10 @@
+# Local env — NEVER commit real keys
+.env.local
+.env
+*.env
+
+# Temp files
+temporary screenshots/
+node_modules/
+.DS_Store
+Thumbs.db
