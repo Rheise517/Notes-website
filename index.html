@@ -737,8 +737,8 @@ function toggleAI() {
 }
 
 async function sendMsg() {
-  // Stop mic without auto-send (inp will be cleared below before onend fires)
-  if (isListening) { suppressAutoSend = true; stopListening(); }
+  // Stop mic without auto-send (inp cleared below before onend fires)
+  if (sessionActive) { suppressAutoSend = true; stopListening(); }
 
   const inp  = document.getElementById('chat-in');
   const text = inp.value.trim();
@@ -844,9 +844,11 @@ let recognition      = null;
 let voiceModeOn      = false;
 let isListening      = false;
 let isSpeaking       = false;
+let sessionActive    = false; // true while user is in a voice session
+let transcript       = '';   // accumulated across mobile browser restarts
 let silenceTimer     = null;
 let suppressAutoSend = false;
-const SILENCE_MS     = 5000; // ms of silence before mic auto-stops
+const SILENCE_MS     = 5000; // ms of silence before auto-stop/send
 
 function toggleVoiceMode() {
   voiceModeOn = !voiceModeOn;
@@ -859,7 +861,7 @@ function toggleVoiceMode() {
 }
 
 function toggleMic() {
-  if (isListening) {
+  if (sessionActive) {
     suppressAutoSend = true; // manual tap = cancel, not send
     stopListening();
   } else {
@@ -868,13 +870,19 @@ function toggleMic() {
 }
 
 function startListening() {
-  if (!SR || isListening) return;
+  if (!SR || sessionActive) return;
+  sessionActive = true;
+  transcript = '';
+  document.getElementById('chat-in').value = '';
+  _beginRecognition();
+}
+
+function _beginRecognition() {
+  if (!SR || !sessionActive) return;
   recognition = new SR();
-  recognition.continuous     = true;  // stay open through pauses
+  recognition.continuous     = false; // false = universal mobile support; we restart manually
   recognition.interimResults = true;
   recognition.lang           = 'en-US';
-
-  let transcript = '';
 
   recognition.onstart = () => {
     isListening = true;
@@ -885,19 +893,32 @@ function startListening() {
 
   recognition.onresult = (e) => {
     let interim = '';
+    let chunk   = '';
     for (let i = e.resultIndex; i < e.results.length; i++) {
-      if (e.results[i].isFinal) transcript += e.results[i][0].transcript + ' ';
-      else interim += e.results[i][0].transcript;
+      if (e.results[i].isFinal) chunk   += e.results[i][0].transcript + ' ';
+      else                       interim += e.results[i][0].transcript;
     }
+    if (chunk) transcript += chunk;
     document.getElementById('chat-in').value = (transcript + interim).trim();
 
-    // Every word resets the silence countdown
+    // Any speech resets the silence countdown
     clearTimeout(silenceTimer);
-    silenceTimer = setTimeout(() => stopListening(), SILENCE_MS);
+    silenceTimer = setTimeout(() => {
+      sessionActive = false;
+      stopListening();
+    }, SILENCE_MS);
   };
 
   recognition.onend = () => {
     isListening = false;
+
+    if (sessionActive) {
+      // Browser ended session early (common on mobile) — restart silently
+      setTimeout(() => _beginRecognition(), 150);
+      return;
+    }
+
+    // Normal end: silence timer fired or user stopped
     clearTimeout(silenceTimer);
     silenceTimer = null;
     document.getElementById('mic-btn').classList.remove('listening');
@@ -910,18 +931,25 @@ function startListening() {
 
   recognition.onerror = (e) => {
     isListening = false;
+    if ((e.error === 'no-speech' || e.error === 'aborted') && sessionActive) {
+      // Not a real error — restart and keep listening
+      setTimeout(() => _beginRecognition(), 150);
+      return;
+    }
+    sessionActive = false;
     clearTimeout(silenceTimer);
     silenceTimer = null;
     suppressAutoSend = false;
     document.getElementById('mic-btn').classList.remove('listening');
     setFabState();
-    if (e.error !== 'no-speech' && e.error !== 'aborted') showToast('Mic: ' + e.error);
+    if (e.error !== 'aborted') showToast('Mic: ' + e.error);
   };
 
-  recognition.start();
+  try { recognition.start(); } catch (err) { /* guard against rapid re-start */ }
 }
 
 function stopListening() {
+  sessionActive = false;
   clearTimeout(silenceTimer);
   silenceTimer = null;
   if (recognition) recognition.stop();
@@ -943,12 +971,12 @@ function speakText(text) {
 
 function setFabState() {
   const fab = document.getElementById('voice-fab');
-  fab.classList.toggle('listening', isListening);
-  fab.classList.toggle('speaking',  isSpeaking && !isListening);
+  fab.classList.toggle('listening', sessionActive || isListening);
+  fab.classList.toggle('speaking',  isSpeaking && !sessionActive && !isListening);
 }
 
 function voiceFab() {
-  if (isListening) { suppressAutoSend = true; stopListening(); return; }
+  if (sessionActive) { suppressAutoSend = true; stopListening(); return; }
   if (!aiOpen) toggleAI();
   if (!voiceModeOn) toggleVoiceMode();
   setTimeout(startListening, 350);
