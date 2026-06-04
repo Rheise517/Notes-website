@@ -737,6 +737,9 @@ function toggleAI() {
 }
 
 async function sendMsg() {
+  // Stop mic without auto-send (inp will be cleared below before onend fires)
+  if (isListening) { suppressAutoSend = true; stopListening(); }
+
   const inp  = document.getElementById('chat-in');
   const text = inp.value.trim();
   if (!text) return;
@@ -837,10 +840,13 @@ document.getElementById('chat-in').addEventListener('keydown', e => {
    VOICE
 ══════════════════════════════ */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let recognition  = null;
-let voiceModeOn  = false;
-let isListening  = false;
-let isSpeaking   = false;
+let recognition      = null;
+let voiceModeOn      = false;
+let isListening      = false;
+let isSpeaking       = false;
+let silenceTimer     = null;
+let suppressAutoSend = false;
+const SILENCE_MS     = 5000; // ms of silence before mic auto-stops
 
 function toggleVoiceMode() {
   voiceModeOn = !voiceModeOn;
@@ -853,49 +859,71 @@ function toggleVoiceMode() {
 }
 
 function toggleMic() {
-  isListening ? stopListening() : startListening();
+  if (isListening) {
+    suppressAutoSend = true; // manual tap = cancel, not send
+    stopListening();
+  } else {
+    startListening();
+  }
 }
 
 function startListening() {
   if (!SR || isListening) return;
   recognition = new SR();
-  recognition.continuous    = false;
+  recognition.continuous     = true;  // stay open through pauses
   recognition.interimResults = true;
-  recognition.lang          = 'en-US';
+  recognition.lang           = 'en-US';
 
-  let final = '';
+  let transcript = '';
+
   recognition.onstart = () => {
     isListening = true;
     document.getElementById('mic-btn').classList.add('listening');
     setFabState();
     if (isSpeaking) { window.speechSynthesis.cancel(); isSpeaking = false; }
   };
+
   recognition.onresult = (e) => {
     let interim = '';
-    final = '';
     for (let i = e.resultIndex; i < e.results.length; i++) {
-      if (e.results[i].isFinal) final += e.results[i][0].transcript;
+      if (e.results[i].isFinal) transcript += e.results[i][0].transcript + ' ';
       else interim += e.results[i][0].transcript;
     }
-    document.getElementById('chat-in').value = final || interim;
+    document.getElementById('chat-in').value = (transcript + interim).trim();
+
+    // Every word resets the silence countdown
+    clearTimeout(silenceTimer);
+    silenceTimer = setTimeout(() => stopListening(), SILENCE_MS);
   };
+
   recognition.onend = () => {
     isListening = false;
+    clearTimeout(silenceTimer);
+    silenceTimer = null;
     document.getElementById('mic-btn').classList.remove('listening');
     setFabState();
+    const doSend = !suppressAutoSend;
+    suppressAutoSend = false;
     const text = document.getElementById('chat-in').value.trim();
-    if (text && voiceModeOn) sendMsg();
+    if (text && voiceModeOn && doSend) sendMsg();
   };
+
   recognition.onerror = (e) => {
     isListening = false;
+    clearTimeout(silenceTimer);
+    silenceTimer = null;
+    suppressAutoSend = false;
     document.getElementById('mic-btn').classList.remove('listening');
     setFabState();
     if (e.error !== 'no-speech' && e.error !== 'aborted') showToast('Mic: ' + e.error);
   };
+
   recognition.start();
 }
 
 function stopListening() {
+  clearTimeout(silenceTimer);
+  silenceTimer = null;
   if (recognition) recognition.stop();
 }
 
@@ -920,7 +948,7 @@ function setFabState() {
 }
 
 function voiceFab() {
-  if (isListening) { stopListening(); return; }
+  if (isListening) { suppressAutoSend = true; stopListening(); return; }
   if (!aiOpen) toggleAI();
   if (!voiceModeOn) toggleVoiceMode();
   setTimeout(startListening, 350);
