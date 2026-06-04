@@ -219,6 +219,9 @@
     .msg.ai .msg-bubble { background: var(--accent-lo); border: 1px solid rgba(255,95,46,0.2); color: var(--text); border-radius: 11px 11px 11px 4px; }
     .action-tags { margin-top: 7px; display: flex; flex-direction: column; gap: 3px; }
     .action-tag { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 4px; background: rgba(255,95,46,0.1); border: 1px solid rgba(255,95,46,0.25); font-size: 10.5px; font-family: 'Syne Mono', monospace; color: var(--accent); width: fit-content; }
+    a.action-tag { text-decoration: none; cursor: pointer; transition: background 0.1s, border-color 0.1s; }
+    a.action-tag:hover { background: rgba(255,95,46,0.22); border-color: rgba(255,95,46,0.5); }
+    a.action-tag:active { opacity: 0.8; }
     .typing { display: flex; gap: 5px; align-items: center; padding: 10px 13px; background: var(--accent-lo); border: 1px solid rgba(255,95,46,0.2); border-radius: 11px 11px 11px 4px; width: fit-content; }
     .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); animation: bounce 1.3s ease-in-out infinite; }
     .dot:nth-child(2){animation-delay:0.18s} .dot:nth-child(3){animation-delay:0.36s}
@@ -821,11 +824,11 @@ async function cancelReminder(id) {
   return !error;
 }
 
-function openInGoogleCalendar(message, remind_at, recurrence_days) {
+function buildGoogleCalendarUrl(message, remind_at, recurrence_days) {
   const dt  = new Date(remind_at);
   const pad = n => String(n).padStart(2, '0');
   const fmt = d => `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
-  const end = new Date(dt.getTime() + 3600000); // 1-hour block so Calendar doesn't complain
+  const end = new Date(dt.getTime() + 3600000);
   const dates = `${fmt(dt)}/${fmt(end)}`;
   let url = `https://calendar.google.com/calendar/render?action=TEMPLATE`
     + `&text=${encodeURIComponent(message)}`
@@ -834,7 +837,7 @@ function openInGoogleCalendar(message, remind_at, recurrence_days) {
   if (recurrence_days) {
     url += `&recur=${encodeURIComponent(`RRULE:FREQ=DAILY;INTERVAL=${recurrence_days}`)}`;
   }
-  window.open(url, '_blank');
+  return url;
 }
 
 function fmtReminder(remind_at, recurrence_days) {
@@ -938,8 +941,8 @@ async function sendMsg() {
         } else if (act.type === 'create_reminder') {
           const ok = await saveReminder(act.message, act.remind_at, act.recurrence_days || null);
           if (ok) {
-            openInGoogleCalendar(act.message, act.remind_at, act.recurrence_days || null);
-            applied.push({ icon: '⏰', label: `Reminder set — "${act.message}" · ${fmtReminder(act.remind_at, act.recurrence_days)} · Google Calendar opened — tap Save` });
+            const calUrl = buildGoogleCalendarUrl(act.message, act.remind_at, act.recurrence_days || null);
+            applied.push({ icon: '⏰', label: `${fmtReminder(act.remind_at, act.recurrence_days)} — tap to add to Google Calendar`, href: calUrl });
           }
         } else if (act.type === 'cancel_reminder') {
           const ok = await cancelReminder(act.id);
@@ -965,7 +968,10 @@ function pushMsg(role, text, actions = []) {
   const el  = document.createElement('div');
   el.className = `msg ${role}`;
   const actHtml = actions.length
-    ? `<div class="action-tags">${actions.map(a=>`<div class="action-tag">${a.icon} ${esc(a.label)}</div>`).join('')}</div>`
+    ? `<div class="action-tags">${actions.map(a => a.href
+        ? `<a class="action-tag" href="${a.href}" target="_blank" rel="noopener">${a.icon} ${esc(a.label)}</a>`
+        : `<div class="action-tag">${a.icon} ${esc(a.label)}</div>`
+      ).join('')}</div>`
     : '';
   el.innerHTML = `<div class="msg-label">${role === 'user' ? 'You' : 'Forge AI'}</div><div class="msg-bubble">${esc(text)}${actHtml}</div>`;
   box.appendChild(el);
