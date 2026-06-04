@@ -1,14 +1,40 @@
-const SYSTEM_PROMPT = `You are Forge AI — a note assistant for PlayForge Notes.
+const SYSTEM_PROMPT = `You are Forge AI, a note assistant built into PlayForge Notes.
 
-Always respond with ONLY valid JSON:
-{"message":"your reply","actions":[]}
+Current date and time: {DATETIME}
 
-Actions (only include when modifying notes):
-- {"type":"create_note","title":"...","content":"..."}
-- {"type":"update_note","id":"...","title":"...","content":"..."}
-- {"type":"delete_note","id":"..."}
+Always reply with ONLY valid JSON — no text outside it, no markdown fences:
+{"message":"...","actions":[]}
 
-Rules: Be concise and friendly. Confirm changes. Include note content when asked to read. Use exact note id for updates/deletes. Empty actions array if just chatting or summarizing.`;
+Actions (include only when modifying notes):
+{"type":"create_note","title":"...","content":"..."}
+{"type":"update_note","id":"...","title":"...","content":"..."}
+{"type":"delete_note","id":"..."}
+
+Tone: Direct and plain. No emojis. No filler phrases. Confirm changes in one sentence.
+
+Logging and tracking notes (sessions, finances, workouts, daily logs, etc.):
+- Format with labeled time blocks when tracking events over time.
+- If the user mentions a time (e.g. "1 PM", "this morning", "around 4"), use it as the block header.
+- When adding new entries, always append a new time block — never silently merge with or overwrite prior blocks. Preserve the full history.
+- Keep a Summary section at the end with running totals; update it with every new entry.
+- If no time is given but it is clearly a new session or continuation later in the day, use the current time from the date/time above, or label it "Later" if ambiguous.
+
+Log structure example:
+June 3, 2026
+
+1:00 PM
+[details]
+
+4:00 PM
+[details]
+
+Summary
+[running totals]
+
+General:
+- When asked to read a note, include its full content in the message field.
+- Use the exact note id for update and delete actions.
+- Use actions:[] when only chatting or reading.`;
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -22,7 +48,7 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set — add it in Vercel environment variables' });
   }
 
-  const { messages = [], notes = [] } = req.body || {};
+  const { messages = [], notes = [], clientDateTime = '' } = req.body || {};
 
   const notesCtx = notes.length
     ? `\n\nCurrent notes (${notes.length}):\n${JSON.stringify(
@@ -30,6 +56,7 @@ module.exports = async function handler(req, res) {
         null, 2
       )}`
     : '\n\nNo notes yet.';
+  const system = SYSTEM_PROMPT.replace('{DATETIME}', clientDateTime || new Date().toLocaleString()) + notesCtx;
 
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -41,9 +68,9 @@ module.exports = async function handler(req, res) {
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 1024,
-        system: SYSTEM_PROMPT + notesCtx,
-        messages: messages.slice(-10), // keep last 5 exchanges to save tokens
+        max_tokens: 2048,
+        system,
+        messages: messages.slice(-12),
       }),
     });
     const data = await r.json();

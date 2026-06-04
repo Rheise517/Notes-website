@@ -237,6 +237,67 @@
     }
     #toast.show { transform: translateX(-50%) translateY(0); }
 
+    /* ── VOICE ── */
+    #mic-btn {
+      width: 36px; height: 36px; flex-shrink: 0;
+      background: var(--elevated); border: 1px solid var(--border);
+      border-radius: 9px; color: var(--muted);
+      cursor: pointer; display: none; align-items: center; justify-content: center;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #mic-btn.voice-ready { display: flex; }
+    #mic-btn:hover { color: var(--text); background: var(--elevated); }
+    #mic-btn:active { transform: scale(0.94); }
+    #mic-btn.listening {
+      background: rgba(255,95,46,0.15);
+      border-color: rgba(255,95,46,0.6);
+      color: var(--accent);
+      animation: mic-ring 1.1s ease-in-out infinite;
+    }
+    @keyframes mic-ring {
+      0%,100% { box-shadow: 0 0 0 0 rgba(255,95,46,0.45); }
+      55% { box-shadow: 0 0 0 7px rgba(255,95,46,0); }
+    }
+
+    #voice-mode-btn.on {
+      background: var(--accent-lo);
+      border-color: rgba(255,95,46,0.4);
+      color: var(--accent);
+    }
+
+    #voice-fab {
+      display: none;
+      position: fixed;
+      bottom: max(28px, env(safe-area-inset-bottom, 28px));
+      right: 20px;
+      width: 58px; height: 58px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: none; color: #fff;
+      cursor: pointer;
+      z-index: 48;
+      align-items: center; justify-content: center;
+      box-shadow: 0 4px 20px rgba(255,95,46,0.5), 0 2px 8px rgba(0,0,0,0.35);
+      transition: transform 0.15s, box-shadow 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #voice-fab:active { transform: scale(0.91); }
+    #voice-fab.listening {
+      animation: fab-pulse 1.1s ease-in-out infinite;
+    }
+    #voice-fab.speaking {
+      animation: fab-speak 0.9s ease-in-out infinite;
+    }
+    @keyframes fab-pulse {
+      0%,100% { box-shadow: 0 4px 20px rgba(255,95,46,0.5), 0 0 0 0 rgba(255,95,46,0.4); }
+      55% { box-shadow: 0 4px 20px rgba(255,95,46,0.5), 0 0 0 18px rgba(255,95,46,0); }
+    }
+    @keyframes fab-speak {
+      0%,100% { transform: scale(1); }
+      50% { transform: scale(1.07); }
+    }
+
     /* ── MOBILE BACKDROP ── */
     #mobile-backdrop {
       display: none;
@@ -333,6 +394,10 @@
       /* ── TOAST SAFE AREA ── */
       #toast { bottom: max(24px, calc(env(safe-area-inset-bottom, 0px) + 16px)); }
 
+      /* ── VOICE MOBILE ── */
+      #mic-btn { width: 44px; height: 44px; border-radius: 11px; }
+      #voice-fab { display: flex; }
+
       /* ── REMOVE HOVER-ONLY STATES THAT DON'T WORK ON TOUCH ── */
       @media (hover: none) {
         #new-btn:hover { background: var(--accent-lo); border-color: rgba(255,95,46,0.3); }
@@ -417,25 +482,38 @@
 <aside id="ai-panel">
   <div id="ai-head">
     <div class="ai-title"><div class="pulse"></div>Forge AI</div>
-    <button class="icon-btn" onclick="toggleAI()">
-      <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
-    </button>
+    <div style="display:flex;gap:6px;align-items:center">
+      <button class="icon-btn" id="voice-mode-btn" onclick="toggleVoiceMode()" title="Toggle voice responses">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 010 7.07"/><path d="M19.07 4.93a10 10 0 010 14.14"/></svg>
+      </button>
+      <button class="icon-btn" onclick="toggleAI()">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
   </div>
   <div id="chat-msgs">
     <div class="msg ai">
       <div class="msg-label">Forge AI</div>
-      <div class="msg-bubble">Hey! I can create, edit, delete, and read your notes — just tell me what you need. Try: <em>"Create a note called Shopping List"</em> or <em>"Read me my last note."</em></div>
+      <div class="msg-bubble">I can create, edit, delete, and search your notes. Try: <em>"Create a casino tracker for today"</em> or <em>"Read me my last note."</em></div>
     </div>
   </div>
   <div id="chat-foot">
     <div id="chat-row">
       <textarea id="chat-in" placeholder="Ask me anything about your notes…" rows="1"></textarea>
+      <button id="mic-btn" onclick="toggleMic()" title="Voice input">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0014 0M12 19v3M8 22h8"/></svg>
+      </button>
       <button id="send-btn" onclick="sendMsg()">
         <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
       </button>
     </div>
   </div>
 </aside>
+
+<!-- Voice FAB (mobile quick-access) -->
+<button id="voice-fab" onclick="voiceFab()" aria-label="Voice assistant">
+  <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0014 0M12 19v3M8 22h8"/></svg>
+</button>
 
 <script>
 /* ══════════════════════════════
@@ -674,7 +752,7 @@ async function sendMsg() {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: history, notes }),
+      body: JSON.stringify({ messages: history, notes, clientDateTime: new Date().toLocaleString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric', hour:'numeric', minute:'2-digit', hour12:true }) }),
     });
     const data = await res.json();
     typing.remove();
@@ -714,7 +792,9 @@ async function sendMsg() {
     }
 
     history.push({ role: 'assistant', content: raw });
-    pushMsg('ai', parsed.message || raw, applied);
+    const aiText = parsed.message || raw;
+    pushMsg('ai', aiText, applied);
+    speakText(aiText);
   } catch(err) {
     typing.remove();
     pushMsg('ai', 'Connection error — is the server running?');
@@ -754,6 +834,99 @@ document.getElementById('chat-in').addEventListener('keydown', e => {
 });
 
 /* ══════════════════════════════
+   VOICE
+══════════════════════════════ */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition  = null;
+let voiceModeOn  = false;
+let isListening  = false;
+let isSpeaking   = false;
+
+function toggleVoiceMode() {
+  voiceModeOn = !voiceModeOn;
+  document.getElementById('voice-mode-btn').classList.toggle('on', voiceModeOn);
+  if (!voiceModeOn) {
+    window.speechSynthesis.cancel();
+    isSpeaking = false;
+    setFabState();
+  }
+}
+
+function toggleMic() {
+  isListening ? stopListening() : startListening();
+}
+
+function startListening() {
+  if (!SR || isListening) return;
+  recognition = new SR();
+  recognition.continuous    = false;
+  recognition.interimResults = true;
+  recognition.lang          = 'en-US';
+
+  let final = '';
+  recognition.onstart = () => {
+    isListening = true;
+    document.getElementById('mic-btn').classList.add('listening');
+    setFabState();
+    if (isSpeaking) { window.speechSynthesis.cancel(); isSpeaking = false; }
+  };
+  recognition.onresult = (e) => {
+    let interim = '';
+    final = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) final += e.results[i][0].transcript;
+      else interim += e.results[i][0].transcript;
+    }
+    document.getElementById('chat-in').value = final || interim;
+  };
+  recognition.onend = () => {
+    isListening = false;
+    document.getElementById('mic-btn').classList.remove('listening');
+    setFabState();
+    const text = document.getElementById('chat-in').value.trim();
+    if (text && voiceModeOn) sendMsg();
+  };
+  recognition.onerror = (e) => {
+    isListening = false;
+    document.getElementById('mic-btn').classList.remove('listening');
+    setFabState();
+    if (e.error !== 'no-speech' && e.error !== 'aborted') showToast('Mic: ' + e.error);
+  };
+  recognition.start();
+}
+
+function stopListening() {
+  if (recognition) recognition.stop();
+}
+
+function speakText(text) {
+  if (!voiceModeOn || !window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const utt = new SpeechSynthesisUtterance(text);
+  utt.rate = 1.0; utt.pitch = 1.0;
+  utt.onstart  = () => { isSpeaking = true;  setFabState(); };
+  utt.onend    = () => {
+    isSpeaking = false; setFabState();
+    if (voiceModeOn) setTimeout(startListening, 600);
+  };
+  utt.onerror  = () => { isSpeaking = false; setFabState(); };
+  window.speechSynthesis.speak(utt);
+}
+
+function setFabState() {
+  const fab = document.getElementById('voice-fab');
+  fab.classList.toggle('listening', isListening);
+  fab.classList.toggle('speaking',  isSpeaking && !isListening);
+}
+
+function voiceFab() {
+  if (isListening) { stopListening(); return; }
+  if (!aiOpen) toggleAI();
+  if (!voiceModeOn) toggleVoiceMode();
+  setTimeout(startListening, 350);
+}
+
+/* ══════════════════════════════
    BOOT
 ══════════════════════════════ */
 (async () => {
@@ -761,6 +934,12 @@ document.getElementById('chat-in').addEventListener('keydown', e => {
   const loadEl = document.getElementById('loading');
   loadEl.classList.add('fade');
   setTimeout(() => loadEl.remove(), 350);
+  // Show voice controls only if browser supports speech recognition
+  if (SR) {
+    document.getElementById('mic-btn').classList.add('voice-ready');
+  } else {
+    document.getElementById('voice-fab').style.display = 'none';
+  }
 })();
 </script>
 </body>
