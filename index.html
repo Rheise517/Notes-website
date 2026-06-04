@@ -821,34 +821,20 @@ async function cancelReminder(id) {
   return !error;
 }
 
-function generateICS(message, remind_at, recurrence_days) {
-  const dt = new Date(remind_at);
+function openInGoogleCalendar(message, remind_at, recurrence_days) {
+  const dt  = new Date(remind_at);
   const pad = n => String(n).padStart(2, '0');
-  // Use local time (no Z) so the event fires at the right local time on any device
-  const dtStr = `${dt.getFullYear()}${pad(dt.getMonth()+1)}${pad(dt.getDate())}T${pad(dt.getHours())}${pad(dt.getMinutes())}00`;
-  const uid   = `${Date.now()}-${Math.random().toString(36).slice(2)}@playforge-notes`;
-  const safe  = message.replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
-  const lines = [
-    'BEGIN:VCALENDAR', 'VERSION:2.0',
-    'PRODID:-//PlayForge Notes//Reminder//EN',
-    'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
-    'BEGIN:VEVENT',
-    `DTSTART:${dtStr}`, `DTEND:${dtStr}`,
-    `SUMMARY:${safe}`, `DESCRIPTION:${safe}`, `UID:${uid}`,
-  ];
-  if (recurrence_days) lines.push(`RRULE:FREQ=DAILY;INTERVAL=${recurrence_days}`);
-  lines.push('BEGIN:VALARM', 'TRIGGER:-PT0M', 'ACTION:DISPLAY', `DESCRIPTION:${safe}`, 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR');
-  return lines.join('\r\n');
-}
-
-function downloadICS(message, remind_at, recurrence_days) {
-  const blob = new Blob([generateICS(message, remind_at, recurrence_days)], { type: 'text/calendar;charset=utf-8' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href = url; a.download = 'reminder.ics';
-  document.body.appendChild(a); a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const fmt = d => `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
+  const end = new Date(dt.getTime() + 3600000); // 1-hour block so Calendar doesn't complain
+  const dates = `${fmt(dt)}/${fmt(end)}`;
+  let url = `https://calendar.google.com/calendar/render?action=TEMPLATE`
+    + `&text=${encodeURIComponent(message)}`
+    + `&dates=${dates}`
+    + `&details=${encodeURIComponent(message)}`;
+  if (recurrence_days) {
+    url += `&recur=${encodeURIComponent(`RRULE:FREQ=DAILY;INTERVAL=${recurrence_days}`)}`;
+  }
+  window.open(url, '_blank');
 }
 
 function fmtReminder(remind_at, recurrence_days) {
@@ -952,8 +938,8 @@ async function sendMsg() {
         } else if (act.type === 'create_reminder') {
           const ok = await saveReminder(act.message, act.remind_at, act.recurrence_days || null);
           if (ok) {
-            downloadICS(act.message, act.remind_at, act.recurrence_days || null);
-            applied.push({ icon: '⏰', label: `Reminder set — "${act.message}" · ${fmtReminder(act.remind_at, act.recurrence_days)} · Open the downloaded file to add to your calendar` });
+            openInGoogleCalendar(act.message, act.remind_at, act.recurrence_days || null);
+            applied.push({ icon: '⏰', label: `Reminder set — "${act.message}" · ${fmtReminder(act.remind_at, act.recurrence_days)} · Google Calendar opened — tap Save` });
           }
         } else if (act.type === 'cancel_reminder') {
           const ok = await cancelReminder(act.id);
