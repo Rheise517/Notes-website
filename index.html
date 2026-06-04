@@ -1002,7 +1002,12 @@ function _beginRecognition() {
       }
       text = text.trim();
     }
-    if (text) { document.getElementById('chat-in').value = (sessionTranscript + text).trim(); resizeChatIn(); }
+    if (text) {
+      const ci = document.getElementById('chat-in');
+      ci.value = (sessionTranscript + text).trim();
+      resizeChatIn();
+      ci.scrollTop = ci.scrollHeight;
+    }
 
     clearTimeout(silenceTimer);
     silenceTimer = setTimeout(() => {
