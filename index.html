@@ -229,7 +229,7 @@
       flex: 1; background: var(--elevated); border: 1px solid var(--border);
       border-radius: 11px; padding: 9px 13px; color: var(--text);
       font-family: 'Karla', sans-serif; font-size: 13px; resize: none; outline: none;
-      min-height: 40px; max-height: 120px; line-height: 1.5; transition: border-color 0.15s;
+      min-height: 40px; max-height: 200px; line-height: 1.5; transition: border-color 0.15s;
     }
     #chat-in:focus { border-color: rgba(255,95,46,0.5); }
     #chat-in::placeholder { color: var(--dim); }
@@ -920,10 +920,12 @@ function showTyping() {
   return el;
 }
 
-document.getElementById('chat-in').addEventListener('input', function() {
-  this.style.height = 'auto';
-  this.style.height = Math.min(this.scrollHeight, 120) + 'px';
-});
+function resizeChatIn() {
+  const el = document.getElementById('chat-in');
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+}
+document.getElementById('chat-in').addEventListener('input', resizeChatIn);
 document.getElementById('chat-in').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); }
 });
@@ -1000,7 +1002,7 @@ function _beginRecognition() {
       }
       text = text.trim();
     }
-    if (text) document.getElementById('chat-in').value = (sessionTranscript + text).trim();
+    if (text) { document.getElementById('chat-in').value = (sessionTranscript + text).trim(); resizeChatIn(); }
 
     clearTimeout(silenceTimer);
     silenceTimer = setTimeout(() => {
