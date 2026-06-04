@@ -737,8 +737,7 @@ function toggleAI() {
 }
 
 async function sendMsg() {
-  // Stop mic without auto-send (inp cleared below before onend fires)
-  if (sessionActive) { suppressAutoSend = true; stopListening(); }
+  if (sessionActive) stopListening(); // stop mic on send
 
   const inp  = document.getElementById('chat-in');
   const text = inp.value.trim();
@@ -840,15 +839,14 @@ document.getElementById('chat-in').addEventListener('keydown', e => {
    VOICE
 ══════════════════════════════ */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let recognition      = null;
-let voiceModeOn      = false;
-let isListening      = false;
-let isSpeaking       = false;
-let sessionActive    = false; // true while user is in a voice session
-let transcript       = '';   // accumulated across mobile browser restarts
-let silenceTimer     = null;
-let suppressAutoSend = false;
-const SILENCE_MS     = 5000; // ms of silence before auto-stop/send
+let recognition       = null;
+let voiceModeOn       = false;
+let isListening       = false;
+let isSpeaking        = false;
+let sessionActive     = false; // true while user is in a voice session
+let sessionTranscript = '';    // text preserved across unexpected browser restarts
+let silenceTimer      = null;
+const SILENCE_MS      = 5000;  // ms of silence before mic auto-stops (no auto-send)
 
 function toggleVoiceMode() {
   voiceModeOn = !voiceModeOn;
@@ -861,18 +859,13 @@ function toggleVoiceMode() {
 }
 
 function toggleMic() {
-  if (sessionActive) {
-    suppressAutoSend = true; // manual tap = cancel, not send
-    stopListening();
-  } else {
-    startListening();
-  }
+  sessionActive ? stopListening() : startListening();
 }
 
 function startListening() {
   if (!SR || sessionActive) return;
-  sessionActive = true;
-  transcript = '';
+  sessionActive     = true;
+  sessionTranscript = '';
   document.getElementById('chat-in').value = '';
   _beginRecognition();
 }
@@ -880,7 +873,7 @@ function startListening() {
 function _beginRecognition() {
   if (!SR || !sessionActive) return;
   recognition = new SR();
-  recognition.continuous     = false; // false = universal mobile support; we restart manually
+  recognition.continuous     = true;  // stay open through pauses — no mic sound/flicker
   recognition.interimResults = true;
   recognition.lang           = 'en-US';
 
@@ -892,20 +885,19 @@ function _beginRecognition() {
   };
 
   recognition.onresult = (e) => {
-    let interim = '';
-    let chunk   = '';
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      if (e.results[i].isFinal) chunk   += e.results[i][0].transcript + ' ';
-      else                       interim += e.results[i][0].transcript;
+    // Always rebuild from ALL results to prevent duplicate text on mobile
+    let fullFinal = '';
+    let interim   = '';
+    for (let i = 0; i < e.results.length; i++) {
+      if (e.results[i].isFinal) fullFinal += e.results[i][0].transcript + ' ';
+      else                       interim   += e.results[i][0].transcript;
     }
-    if (chunk) transcript += chunk;
-    document.getElementById('chat-in').value = (transcript + interim).trim();
+    document.getElementById('chat-in').value = (sessionTranscript + fullFinal + interim).trim();
 
-    // Any speech resets the silence countdown
     clearTimeout(silenceTimer);
     silenceTimer = setTimeout(() => {
       sessionActive = false;
-      stopListening();
+      stopListening(); // mic stops — text stays, user presses send when ready
     }, SILENCE_MS);
   };
 
@@ -913,39 +905,36 @@ function _beginRecognition() {
     isListening = false;
 
     if (sessionActive) {
-      // Browser ended session early (common on mobile) — restart silently
-      setTimeout(() => _beginRecognition(), 150);
+      // Browser ended session unexpectedly (some mobile devices ignore continuous)
+      // Save current text and restart so there's no gap
+      const cur = document.getElementById('chat-in').value.trim();
+      sessionTranscript = cur ? cur + ' ' : '';
+      setTimeout(() => _beginRecognition(), 100);
       return;
     }
 
-    // Normal end: silence timer fired or user stopped
     clearTimeout(silenceTimer);
     silenceTimer = null;
     document.getElementById('mic-btn').classList.remove('listening');
     setFabState();
-    const doSend = !suppressAutoSend;
-    suppressAutoSend = false;
-    const text = document.getElementById('chat-in').value.trim();
-    if (text && voiceModeOn && doSend) sendMsg();
+    // No auto-send — user presses send when ready
   };
 
   recognition.onerror = (e) => {
     isListening = false;
     if ((e.error === 'no-speech' || e.error === 'aborted') && sessionActive) {
-      // Not a real error — restart and keep listening
-      setTimeout(() => _beginRecognition(), 150);
+      setTimeout(() => _beginRecognition(), 100);
       return;
     }
     sessionActive = false;
     clearTimeout(silenceTimer);
     silenceTimer = null;
-    suppressAutoSend = false;
     document.getElementById('mic-btn').classList.remove('listening');
     setFabState();
     if (e.error !== 'aborted') showToast('Mic: ' + e.error);
   };
 
-  try { recognition.start(); } catch (err) { /* guard against rapid re-start */ }
+  try { recognition.start(); } catch (err) {}
 }
 
 function stopListening() {
@@ -976,7 +965,7 @@ function setFabState() {
 }
 
 function voiceFab() {
-  if (sessionActive) { suppressAutoSend = true; stopListening(); return; }
+  if (sessionActive) { stopListening(); return; }
   if (!aiOpen) toggleAI();
   if (!voiceModeOn) toggleVoiceMode();
   setTimeout(startListening, 350);
