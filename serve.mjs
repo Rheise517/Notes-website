@@ -30,9 +30,23 @@ const MIME = {
   '.jpg': 'image/jpeg', '.svg': 'image/svg+xml',
 };
 
+function buildDayCalendar() {
+  const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  return Array.from({ length: 14 }, (_, i) => {
+    const d = new Date(today.getTime() + i * 86400000);
+    return `${DAYS[d.getDay()]} ${MONTHS[d.getMonth()]} ${d.getDate()}${i === 0 ? ' (today)' : ''}`;
+  }).join('\n');
+}
+
 const SYSTEM_PROMPT = `You are Forge AI, a note assistant built into PlayForge Notes.
 
 Current date and time: {DATETIME}
+
+Day-of-week reference for the next 14 days — use these exact dates when scheduling reminders, never calculate dates yourself:
+{CALENDAR}
 
 Always reply with ONLY valid JSON — no text outside it, no markdown fences:
 {"message":"...","actions":[]}
@@ -89,7 +103,10 @@ const server = http.createServer(async (req, res) => {
         const notesCtx = notes.length
           ? `\n\nCurrent notes (${notes.length}):\n${JSON.stringify(notes.map(n => ({ id: n.id, title: n.title, content: n.content })), null, 2)}`
           : '\n\nNo notes yet.';
-        const system = SYSTEM_PROMPT.replace('{DATETIME}', clientDateTime || new Date().toLocaleString()) + notesCtx;
+        const system = SYSTEM_PROMPT
+          .replace('{DATETIME}', clientDateTime || new Date().toLocaleString())
+          .replace('{CALENDAR}', buildDayCalendar())
+          + notesCtx;
 
         const r = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
