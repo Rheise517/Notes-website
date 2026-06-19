@@ -354,7 +354,15 @@
     .hist-badge.ai { background: rgba(255,95,46,0.15); color: var(--accent); border: 1px solid rgba(255,95,46,0.3); }
     .hist-badge.restore { background: rgba(140,138,158,0.12); color: var(--muted); border: 1px solid rgba(140,138,158,0.22); }
     .hist-note-title { font-size: 12px; font-weight: 600; color: var(--text); }
-    .hist-preview { font-size: 11px; color: var(--muted); line-height: 1.55; }
+    .hist-preview {
+      font-size: 11px; color: var(--muted); line-height: 1.55;
+      display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .hist-item.expanded .hist-preview { display: block; overflow: visible; white-space: pre-wrap; }
+    .hist-expand-hint { font-family: 'Syne Mono', monospace; font-size: 9px; color: var(--dim); margin-top: 2px; }
+    .hist-item.expanded .hist-expand-hint { display: none; }
+    .hist-item { cursor: pointer; }
+    .hist-item:active { opacity: 0.82; }
     .hist-restore-btn {
       margin-top: 4px; align-self: flex-start;
       padding: 4px 10px; border-radius: 6px;
@@ -1031,7 +1039,7 @@ function renderVersions(versions, noteId) {
     return;
   }
   el.innerHTML = versions.map(v => `
-    <div class="hist-item">
+    <div class="hist-item" onclick="toggleHistItem(this)">
       <div class="hist-meta">
         <span class="hist-time">${timeAgo(v.created_at)}</span>
         <span class="hist-badge ${v.source === 'ai' ? 'ai' : 'restore'}">
@@ -1039,9 +1047,13 @@ function renderVersions(versions, noteId) {
         </span>
       </div>
       <div class="hist-note-title">${esc(v.title || 'Untitled')}</div>
-      ${v.content ? `<div class="hist-preview">${esc(v.content.slice(0, 120))}${v.content.length > 120 ? '…' : ''}</div>` : ''}
-      <button class="hist-restore-btn" onclick="restoreVersion('${v.id}', '${noteId}')">Restore this version</button>
+      ${v.content ? `<div class="hist-preview">${esc(v.content)}</div><div class="hist-expand-hint">Tap to expand</div>` : ''}
+      <button class="hist-restore-btn" onclick="event.stopPropagation();restoreVersion('${v.id}', '${noteId}')">Restore this version</button>
     </div>`).join('');
+}
+
+function toggleHistItem(el) {
+  el.classList.toggle('expanded');
 }
 
 async function toggleHistory() {
