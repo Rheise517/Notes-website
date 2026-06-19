@@ -46,6 +46,11 @@
 - **Spacing:** Use intentional, consistent spacing tokens — not random Tailwind steps.
 - **Depth:** Surfaces should have a layering system (base → elevated → floating), not all sit at the same z-plane.
 
+## Version Counter
+- The sidebar footer in `index.html` contains a version label, e.g. `v0.1`
+- **Every push/update: find that string and increment it by 0.1** (v0.1 → v0.2, etc.)
+- Do this as part of every commit — no exceptions
+
 ## Hard Rules
 - Do not add sections, features, or content not in the reference
 - Do not "improve" a reference design — match it

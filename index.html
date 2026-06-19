@@ -315,6 +315,12 @@
       55% { box-shadow: 0 0 0 7px rgba(255,172,75,0); }
     }
 
+    #voice-mode-btn.on {
+      background: var(--accent-lo);
+      border-color: rgba(255,95,46,0.4);
+      color: var(--accent);
+    }
+
     #voice-fab {
       display: none;
       position: fixed;
@@ -502,7 +508,7 @@
   <div id="sb-foot">
     <div style="display:flex;flex-direction:column;gap:2px">
       <span id="notes-count">Loading…</span>
-      <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--dim);opacity:0.5">v0.0</span>
+      <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--dim);opacity:0.5">v0.1</span>
     </div>
     <div style="display:flex;gap:6px">
       <button class="icon-btn" id="refresh-btn" onclick="loadNotes()" title="Refresh notes">
@@ -545,6 +551,9 @@
   <div id="ai-head">
     <div class="ai-title"><div class="pulse"></div>Forge AI</div>
     <div style="display:flex;gap:6px;align-items:center">
+      <button class="icon-btn" id="voice-mode-btn" onclick="toggleVoiceMode()" title="Toggle voice responses">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 010 7.07"/><path d="M19.07 4.93a10 10 0 010 14.14"/></svg>
+      </button>
       <button class="icon-btn" onclick="toggleAI()">
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
       </button>
@@ -1009,6 +1018,7 @@ async function sendMsg() {
     history.push({ role: 'assistant', content: raw });
     const aiText = parsed.message || raw;
     pushMsg('ai', aiText, applied);
+    speakText(aiText);
   } catch(err) {
     typing.remove();
     pushMsg('ai', 'Connection error — is the server running?');
@@ -1071,6 +1081,7 @@ let audioChunks   = [];
 let isRecording   = false;
 let isProcessing  = false;
 let micMimeType   = '';
+let voiceModeOn   = false;
 
 function getMicMimeType() {
   const types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
@@ -1099,6 +1110,7 @@ async function startMic() {
 
     mediaRecorder.start();
     isRecording = true;
+    window.speechSynthesis?.cancel();
     _updateMicUI();
   } catch (e) {
     const msg = (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError')
@@ -1163,6 +1175,21 @@ function voiceFab() {
   if (isRecording) { stopMic(); return; }
   if (!aiOpen) toggleAI();
   setTimeout(startMic, 300);
+}
+
+function toggleVoiceMode() {
+  voiceModeOn = !voiceModeOn;
+  document.getElementById('voice-mode-btn').classList.toggle('on', voiceModeOn);
+  if (!voiceModeOn) window.speechSynthesis?.cancel();
+}
+
+function speakText(text) {
+  if (!voiceModeOn || !window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const utt = new SpeechSynthesisUtterance(text);
+  utt.rate  = 1.0;
+  utt.pitch = 1.0;
+  window.speechSynthesis.speak(utt);
 }
 
 /* ══════════════════════════════
