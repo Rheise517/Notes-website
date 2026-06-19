@@ -305,12 +305,6 @@
       55% { box-shadow: 0 0 0 7px rgba(255,95,46,0); }
     }
 
-    #voice-mode-btn.on {
-      background: var(--accent-lo);
-      border-color: rgba(255,95,46,0.4);
-      color: var(--accent);
-    }
-
     #voice-fab {
       display: none;
       position: fixed;
@@ -496,7 +490,10 @@
     <div id="trash-list" style="display:none"></div>
   </div>
   <div id="sb-foot">
-    <span id="notes-count">Loading…</span>
+    <div style="display:flex;flex-direction:column;gap:2px">
+      <span id="notes-count">Loading…</span>
+      <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--dim);opacity:0.5">v0.0</span>
+    </div>
     <div style="display:flex;gap:6px">
       <button class="icon-btn" id="refresh-btn" onclick="loadNotes()" title="Refresh notes">
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
@@ -538,9 +535,6 @@
   <div id="ai-head">
     <div class="ai-title"><div class="pulse"></div>Forge AI</div>
     <div style="display:flex;gap:6px;align-items:center">
-      <button class="icon-btn" id="voice-mode-btn" onclick="toggleVoiceMode()" title="Toggle voice responses">
-        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 010 7.07"/><path d="M19.07 4.93a10 10 0 010 14.14"/></svg>
-      </button>
       <button class="icon-btn" onclick="toggleAI()">
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
       </button>
@@ -598,6 +592,7 @@ const STARRED_KEY = 'pf_starred_notes';
 let starredIds    = new Set();
 
 let justPasted    = false;
+const IS_ANDROID  = /Android/i.test(navigator.userAgent);
 
 let reminders = [];
 
@@ -938,7 +933,7 @@ function toggleAI() {
 }
 
 async function sendMsg() {
-  if (sessionActive) stopListening(); // stop mic on send
+  if (isListening) stopMic();
 
   const inp  = document.getElementById('chat-in');
   const text = inp.value.trim();
@@ -1006,7 +1001,6 @@ async function sendMsg() {
     history.push({ role: 'assistant', content: raw });
     const aiText = parsed.message || raw;
     pushMsg('ai', aiText, applied);
-    speakText(aiText);
   } catch(err) {
     typing.remove();
     pushMsg('ai', 'Connection error — is the server running?');
@@ -1059,153 +1053,111 @@ document.getElementById('chat-in').addEventListener('keydown', e => {
 });
 
 /* ══════════════════════════════
-   VOICE — restored backup-2026-06-08
+   VOICE — Speech to Text
+   Works on: Chrome desktop, Android Chrome, iOS Safari (webkit)
 ══════════════════════════════ */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let recognition       = null;
-let voiceModeOn       = false;
-let isListening       = false;
-let isSpeaking        = false;
-let sessionActive     = false;
-let sessionTranscript = '';
-let wakeLock          = null;
-// Android Chrome fires cumulative finals (each entry = all words so far).
-// Desktop Chrome fires incremental finals (each entry = only new words).
-const IS_ANDROID = /Android/i.test(navigator.userAgent);
-
-function toggleVoiceMode() {
-  voiceModeOn = !voiceModeOn;
-  document.getElementById('voice-mode-btn').classList.toggle('on', voiceModeOn);
-  if (!voiceModeOn) {
-    window.speechSynthesis.cancel();
-    isSpeaking = false;
-    setFabState();
-  }
-}
+let recognition = null;
+let isListening = false;
+let voiceBase   = '';  // text captured before/between recognition sessions
+let wakeLock    = null;
 
 function toggleMic() {
-  sessionActive ? stopListening() : startListening();
+  isListening ? stopMic() : startMic();
 }
 
-function startListening() {
-  if (!SR || sessionActive) return;
-  sessionActive = true;
-  // Preserve any text already in the box; new speech appends to it
-  const existing    = document.getElementById('chat-in').value.trim();
-  sessionTranscript = existing ? existing + ' ' : '';
-  _beginRecognition();
-  // Keep the screen on while the mic is active
+function startMic() {
+  if (!SR || isListening) return;
+  isListening = true;
+  // Preserve anything already typed; new speech appends after it
+  const cur = document.getElementById('chat-in').value.trimEnd();
+  voiceBase = cur ? cur + ' ' : '';
+  _runRecognition();
+  _acquireWakeLock();
+  _updateMicUI();
+}
+
+function _runRecognition() {
+  if (!isListening) return;
+
+  recognition = new SR();
+  recognition.continuous     = true;
+  recognition.interimResults = true;
+  recognition.lang           = 'en-US';
+
+  recognition.onresult = (e) => {
+    // Rebuild full transcript from all results in this session.
+    // Looping all e.results works on both Android (cumulative) and desktop (incremental)
+    // because in both cases e.results accumulates every chunk — finals first, interim last.
+    let finals = '', interim = '';
+    for (let i = 0; i < e.results.length; i++) {
+      if (e.results[i].isFinal) finals  += e.results[i][0].transcript;
+      else                       interim += e.results[i][0].transcript;
+    }
+    const ci = document.getElementById('chat-in');
+    ci.value = (voiceBase + finals + interim).trimStart();
+    resizeChatIn();
+    ci.scrollTop = ci.scrollHeight;
+  };
+
+  recognition.onend = () => {
+    if (!isListening) { _updateMicUI(); return; }
+    // Browser ended the session (common on mobile — continuous isn't always respected).
+    // Save progress into voiceBase then restart seamlessly.
+    const cur = document.getElementById('chat-in').value.trimEnd();
+    voiceBase = cur ? cur + ' ' : '';
+    setTimeout(_runRecognition, 120);
+  };
+
+  recognition.onerror = (e) => {
+    // no-speech and aborted are expected during continuous listening — just restart
+    if ((e.error === 'no-speech' || e.error === 'aborted') && isListening) {
+      setTimeout(_runRecognition, 120);
+      return;
+    }
+    isListening = false;
+    _updateMicUI();
+    if (e.error === 'not-allowed') {
+      showToast('Microphone access denied — check browser/OS permissions');
+    } else if (e.error !== 'aborted') {
+      showToast('Mic error: ' + e.error);
+    }
+  };
+
+  try { recognition.start(); } catch (_) {}
+}
+
+function stopMic() {
+  isListening = false;
+  if (recognition) { try { recognition.stop(); } catch (_) {} recognition = null; }
+  _releaseWakeLock();
+  _updateMicUI();
+}
+
+function _updateMicUI() {
+  document.getElementById('mic-btn').classList.toggle('listening', isListening);
+  document.getElementById('voice-fab').classList.toggle('listening', isListening);
+}
+
+function _acquireWakeLock() {
   if (navigator.wakeLock) {
     navigator.wakeLock.request('screen').then(wl => { wakeLock = wl; }).catch(() => {});
   }
 }
-
-function _beginRecognition() {
-  if (!SR || !sessionActive) return;
-  recognition = new SR();
-  recognition.continuous     = true;  // stay open through pauses — no mic sound/flicker
-  recognition.interimResults = true;
-  recognition.lang           = 'en-US';
-
-  recognition.onstart = () => {
-    isListening = true;
-    document.getElementById('mic-btn').classList.add('listening');
-    setFabState();
-    if (isSpeaking) { window.speechSynthesis.cancel(); isSpeaking = false; }
-  };
-
-  recognition.onresult = (e) => {
-    let text = '';
-    if (IS_ANDROID) {
-      // Each result entry contains the full cumulative transcript — just use the last one
-      for (let i = e.results.length - 1; i >= 0; i--) {
-        if (e.results[i].isFinal) { text = e.results[i][0].transcript.trim(); break; }
-      }
-    } else {
-      // Desktop: each entry contains only new words — sum them all
-      for (let i = 0; i < e.results.length; i++) {
-        if (e.results[i].isFinal) text += e.results[i][0].transcript + ' ';
-      }
-      text = text.trim();
-    }
-    if (text) {
-      const ci = document.getElementById('chat-in');
-      ci.value = (sessionTranscript + text).trim();
-      resizeChatIn();
-      ci.scrollTop = ci.scrollHeight;
-    }
-  };
-
-  recognition.onend = () => {
-    isListening = false;
-
-    if (sessionActive) {
-      // Browser ended session unexpectedly (some mobile devices ignore continuous)
-      // Save current text and restart so there's no gap
-      const cur = document.getElementById('chat-in').value.trim();
-      sessionTranscript = cur ? cur + ' ' : '';
-      setTimeout(() => _beginRecognition(), 100);
-      return;
-    }
-
-    document.getElementById('mic-btn').classList.remove('listening');
-    setFabState();
-  };
-
-  recognition.onerror = (e) => {
-    isListening = false;
-    if ((e.error === 'no-speech' || e.error === 'aborted') && sessionActive) {
-      setTimeout(() => _beginRecognition(), 100);
-      return;
-    }
-    sessionActive = false;
-    document.getElementById('mic-btn').classList.remove('listening');
-    setFabState();
-    if (e.error !== 'aborted') showToast('Mic: ' + e.error);
-  };
-
-  try { recognition.start(); } catch (err) {}
-}
-
-function stopListening() {
-  sessionActive = false;
-  if (recognition) recognition.stop();
+function _releaseWakeLock() {
   if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
 }
 
-function speakText(text) {
-  if (!voiceModeOn || !window.speechSynthesis) return;
-  window.speechSynthesis.cancel();
-  const utt = new SpeechSynthesisUtterance(text);
-  utt.rate = 1.0; utt.pitch = 1.0;
-  utt.onstart  = () => { isSpeaking = true;  setFabState(); };
-  utt.onend    = () => {
-    isSpeaking = false; setFabState();
-    if (voiceModeOn) setTimeout(startListening, 600);
-  };
-  utt.onerror  = () => { isSpeaking = false; setFabState(); };
-  window.speechSynthesis.speak(utt);
-}
-
-function setFabState() {
-  const fab = document.getElementById('voice-fab');
-  fab.classList.toggle('listening', sessionActive || isListening);
-  fab.classList.toggle('speaking',  isSpeaking && !sessionActive && !isListening);
-}
+// Re-acquire wake lock when returning to the app mid-session
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && isListening) _acquireWakeLock();
+});
 
 function voiceFab() {
-  if (sessionActive) { stopListening(); return; }
+  if (isListening) { stopMic(); return; }
   if (!aiOpen) toggleAI();
-  if (!voiceModeOn) toggleVoiceMode();
-  setTimeout(startListening, 350);
+  setTimeout(startMic, 300);
 }
-
-// Re-acquire wake lock if the user returns to the app mid-session
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && sessionActive && navigator.wakeLock) {
-    navigator.wakeLock.request('screen').then(wl => { wakeLock = wl; }).catch(() => {});
-  }
-});
 
 /* ══════════════════════════════
    BOOT
@@ -1223,6 +1175,7 @@ document.addEventListener('visibilitychange', () => {
   if (SR) {
     document.getElementById('mic-btn').classList.add('voice-ready');
   } else {
+    document.getElementById('mic-btn').style.display = 'none';
     document.getElementById('voice-fab').style.display = 'none';
   }
 })();
