@@ -300,9 +300,19 @@
       color: var(--accent);
       animation: mic-ring 1.1s ease-in-out infinite;
     }
+    #mic-btn.processing {
+      background: rgba(255,172,75,0.15);
+      border-color: rgba(255,172,75,0.6);
+      color: var(--amber);
+      animation: mic-ring-amber 0.8s ease-in-out infinite;
+    }
     @keyframes mic-ring {
       0%,100% { box-shadow: 0 0 0 0 rgba(255,95,46,0.45); }
       55% { box-shadow: 0 0 0 7px rgba(255,95,46,0); }
+    }
+    @keyframes mic-ring-amber {
+      0%,100% { box-shadow: 0 0 0 0 rgba(255,172,75,0.45); }
+      55% { box-shadow: 0 0 0 7px rgba(255,172,75,0); }
     }
 
     #voice-fab {
@@ -1051,66 +1061,106 @@ document.getElementById('chat-in').addEventListener('keydown', e => {
 });
 
 /* ══════════════════════════════
-   VOICE — Speech to Text
+   VOICE — Groq Whisper STT
+   Records locally via MediaRecorder, sends to Groq, appends transcript.
+   Tap to start recording, tap again to stop and transcribe.
+   Multiple taps append to whatever is already in the box.
 ══════════════════════════════ */
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let recognition = null;
-let isListening = false;
+let mediaRecorder = null;
+let audioChunks   = [];
+let isRecording   = false;
+let isProcessing  = false;
+let micMimeType   = '';
 
-function toggleMic() {
-  isListening ? stopMic() : startMic();
+function getMicMimeType() {
+  const types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
+  for (const t of types) { if (MediaRecorder.isTypeSupported(t)) return t; }
+  return '';
 }
 
-function startMic() {
-  if (!SR || isListening) return;
+function toggleMic() {
+  isRecording ? stopMic() : startMic();
+}
 
-  recognition = new SR();
-  recognition.continuous     = false;
-  recognition.interimResults = true;
-  recognition.lang           = 'en-US';
+async function startMic() {
+  if (isRecording || isProcessing) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    micMimeType = getMicMimeType();
+    audioChunks = [];
+    mediaRecorder = new MediaRecorder(stream, micMimeType ? { mimeType: micMimeType } : {});
+    micMimeType = mediaRecorder.mimeType;
 
-  let finalText = '';
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+    mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      await transcribeAudio();
+    };
 
-  recognition.onstart = () => {
-    isListening = true;
-    document.getElementById('mic-btn').classList.add('listening');
-    document.getElementById('voice-fab').classList.add('listening');
-  };
-
-  recognition.onresult = (e) => {
-    let interim = '';
-    finalText = '';
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      if (e.results[i].isFinal) finalText += e.results[i][0].transcript;
-      else interim += e.results[i][0].transcript;
-    }
-    const ci = document.getElementById('chat-in');
-    ci.value = finalText || interim;
-    resizeChatIn();
-  };
-
-  recognition.onend = () => {
-    isListening = false;
-    document.getElementById('mic-btn').classList.remove('listening');
-    document.getElementById('voice-fab').classList.remove('listening');
-  };
-
-  recognition.onerror = (e) => {
-    isListening = false;
-    document.getElementById('mic-btn').classList.remove('listening');
-    document.getElementById('voice-fab').classList.remove('listening');
-    if (e.error !== 'no-speech' && e.error !== 'aborted') showToast('Mic: ' + e.error);
-  };
-
-  recognition.start();
+    mediaRecorder.start();
+    isRecording = true;
+    _updateMicUI();
+  } catch (e) {
+    const msg = (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError')
+      ? 'Microphone access denied — check browser permissions'
+      : 'Could not start microphone';
+    showToast(msg);
+  }
 }
 
 function stopMic() {
-  if (recognition) recognition.stop();
+  if (!isRecording || !mediaRecorder) return;
+  isRecording  = false;
+  isProcessing = true;
+  mediaRecorder.stop();
+  _updateMicUI();
+}
+
+async function transcribeAudio() {
+  const blob   = new Blob(audioChunks, { type: micMimeType });
+  const base64 = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+
+  try {
+    const res  = await fetch('/api/transcribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ audio: base64, mimeType: micMimeType }),
+    });
+    const data = await res.json();
+
+    if (data.text) {
+      const ci       = document.getElementById('chat-in');
+      const existing = ci.value.trimEnd();
+      ci.value       = existing ? existing + ' ' + data.text.trim() : data.text.trim();
+      resizeChatIn();
+      ci.scrollTop   = ci.scrollHeight;
+    } else {
+      showToast('Could not transcribe — try again');
+    }
+  } catch (_) {
+    showToast('Transcription failed — check connection');
+  } finally {
+    isProcessing = false;
+    _updateMicUI();
+  }
+}
+
+function _updateMicUI() {
+  const micBtn = document.getElementById('mic-btn');
+  const fab    = document.getElementById('voice-fab');
+  micBtn.classList.toggle('listening',  isRecording);
+  micBtn.classList.toggle('processing', isProcessing);
+  fab.classList.toggle('listening',     isRecording);
+  fab.classList.toggle('processing',    isProcessing);
 }
 
 function voiceFab() {
-  if (isListening) { stopMic(); return; }
+  if (isRecording) { stopMic(); return; }
   if (!aiOpen) toggleAI();
   setTimeout(startMic, 300);
 }
@@ -1127,8 +1177,8 @@ function voiceFab() {
   const loadEl = document.getElementById('loading');
   loadEl.classList.add('fade');
   setTimeout(() => loadEl.remove(), 350);
-  // Show voice controls only if browser supports speech recognition
-  if (SR) {
+  // Show voice controls if browser supports MediaRecorder (Chrome, Android, iOS 14.3+, Firefox)
+  if (typeof MediaRecorder !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
     document.getElementById('mic-btn').classList.add('voice-ready');
   } else {
     document.getElementById('mic-btn').style.display = 'none';

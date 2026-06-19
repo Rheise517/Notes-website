@@ -88,6 +88,39 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
+  if (req.url === '/api/transcribe' && req.method === 'POST') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', async () => {
+      const groqKey = process.env.GROQ_API_KEY;
+      if (!groqKey) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'GROQ_API_KEY not set in .env.local' }));
+        return;
+      }
+      try {
+        const { audio, mimeType } = JSON.parse(body);
+        const buffer = Buffer.from(audio, 'base64');
+        const ext = mimeType?.includes('mp4') ? 'm4a' : mimeType?.includes('ogg') ? 'ogg' : 'webm';
+        const formData = new FormData();
+        formData.append('file', new Blob([buffer], { type: mimeType || 'audio/webm' }), `audio.${ext}`);
+        formData.append('model', 'whisper-large-v3-turbo');
+        const r = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${groqKey}` },
+          body: formData,
+        });
+        const data = await r.json();
+        res.writeHead(r.status, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(data));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
   if (req.url === '/api/chat' && req.method === 'POST') {
     let body = '';
     req.on('data', c => body += c);
