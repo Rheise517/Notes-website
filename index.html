@@ -1052,10 +1052,13 @@ document.getElementById('chat-in').addEventListener('keydown', e => {
 
 /* ══════════════════════════════
    VOICE — Speech to Text
+   Stays on until tapped again. Uses e.resultIndex so finals are
+   never double-counted when Android force-restarts the session.
 ══════════════════════════════ */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let recognition = null;
-let isListening = false;
+let recognition  = null;
+let isListening  = false;
+let micFinals    = ''; // finals accumulated across all recognition instances
 
 function toggleMic() {
   isListening ? stopMic() : startMic();
@@ -1063,50 +1066,64 @@ function toggleMic() {
 
 function startMic() {
   if (!SR || isListening) return;
+  isListening = true;
+  micFinals = ''; // fresh session
+  _updateMicUI();
+  _startRecognition();
+}
+
+function _startRecognition() {
+  if (!isListening) return;
 
   recognition = new SR();
-  recognition.continuous     = false;
+  recognition.continuous     = true;
   recognition.interimResults = true;
   recognition.lang           = 'en-US';
 
-  let finalText = '';
-
-  recognition.onstart = () => {
-    isListening = true;
-    document.getElementById('mic-btn').classList.add('listening');
-    document.getElementById('voice-fab').classList.add('listening');
-  };
-
   recognition.onresult = (e) => {
-    let interim = '';
-    finalText = '';
+    // e.resultIndex = first result that changed this event — only process from there.
+    // This is the key that prevents duplication across restarts on Android.
     for (let i = e.resultIndex; i < e.results.length; i++) {
-      if (e.results[i].isFinal) finalText += e.results[i][0].transcript;
-      else interim += e.results[i][0].transcript;
+      if (e.results[i].isFinal) micFinals += e.results[i][0].transcript;
+    }
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (!e.results[i].isFinal) interim += e.results[i][0].transcript;
     }
     const ci = document.getElementById('chat-in');
-    ci.value = finalText || interim;
+    ci.value = micFinals + interim;
     resizeChatIn();
+    ci.scrollTop = ci.scrollHeight;
   };
 
   recognition.onend = () => {
-    isListening = false;
-    document.getElementById('mic-btn').classList.remove('listening');
-    document.getElementById('voice-fab').classList.remove('listening');
+    // Stay on: restart silently. UI never flickers because isListening stays true.
+    if (isListening) { setTimeout(_startRecognition, 80); return; }
+    _updateMicUI();
   };
 
   recognition.onerror = (e) => {
+    if ((e.error === 'no-speech' || e.error === 'aborted') && isListening) {
+      setTimeout(_startRecognition, 80);
+      return;
+    }
     isListening = false;
-    document.getElementById('mic-btn').classList.remove('listening');
-    document.getElementById('voice-fab').classList.remove('listening');
-    if (e.error !== 'no-speech' && e.error !== 'aborted') showToast('Mic: ' + e.error);
+    _updateMicUI();
+    if (e.error !== 'aborted') showToast('Mic: ' + e.error);
   };
 
-  recognition.start();
+  try { recognition.start(); } catch (_) {}
 }
 
 function stopMic() {
-  if (recognition) recognition.stop();
+  isListening = false;
+  if (recognition) { try { recognition.stop(); } catch (_) {} recognition = null; }
+  _updateMicUI();
+}
+
+function _updateMicUI() {
+  document.getElementById('mic-btn').classList.toggle('listening', isListening);
+  document.getElementById('voice-fab').classList.toggle('listening', isListening);
 }
 
 function voiceFab() {
