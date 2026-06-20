@@ -382,6 +382,48 @@
       color: var(--accent);
     }
 
+    /* ── AUTH SCREEN ── */
+    #auth-screen {
+      position: fixed; inset: 0;
+      background: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 300;
+    }
+    #auth-screen.hidden { display: none; }
+    #auth-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 36px 32px;
+      width: min(400px, 90vw);
+      display: flex; flex-direction: column; gap: 18px;
+      box-shadow: 0 8px 48px rgba(0,0,0,0.6), 0 2px 16px rgba(255,95,46,0.08);
+    }
+    #auth-email, #auth-pass {
+      background: var(--elevated);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 10px 14px;
+      color: var(--text);
+      font-family: 'Karla', sans-serif;
+      font-size: 14px;
+      outline: none;
+      width: 100%;
+      transition: border-color 0.15s;
+    }
+    #auth-email:focus, #auth-pass:focus { border-color: rgba(255,95,46,0.5); }
+    #auth-email::placeholder, #auth-pass::placeholder { color: var(--dim); }
+    #auth-submit {
+      width: 100%; padding: 11px 16px;
+      background: var(--accent); border: none; border-radius: 9px;
+      color: #fff; font-family: 'Karla', sans-serif;
+      font-size: 14px; font-weight: 700; cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    #auth-submit:hover { opacity: 0.88; }
+    #auth-submit:active { transform: scale(0.98); }
+    #auth-submit:disabled { opacity: 0.45; cursor: not-allowed; }
+
     #voice-fab {
       display: none;
       position: fixed;
@@ -531,6 +573,38 @@
 </head>
 <body>
 
+<!-- ═══ AUTH SCREEN ═══ -->
+<div id="auth-screen" class="hidden">
+  <div id="auth-card">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div class="brand-mark" style="width:32px;height:32px;border-radius:9px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+      </div>
+      <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:18px;letter-spacing:-0.025em">Play<em style="color:var(--accent);font-style:normal">Forge</em> Notes</div>
+    </div>
+    <div>
+      <div id="auth-title" style="font-family:'Syne',sans-serif;font-size:22px;font-weight:700;color:var(--text);letter-spacing:-0.02em;margin-bottom:6px">Sign in</div>
+      <div id="auth-sub" style="font-size:13px;color:var(--muted);line-height:1.6">Enter your email and password to continue.</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;flex-direction:column;gap:5px">
+        <label style="font-family:'Syne Mono',monospace;font-size:10px;color:var(--dim);letter-spacing:0.04em">EMAIL</label>
+        <input id="auth-email" type="email" placeholder="you@example.com" autocomplete="email" />
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px">
+        <label style="font-family:'Syne Mono',monospace;font-size:10px;color:var(--dim);letter-spacing:0.04em">PASSWORD</label>
+        <input id="auth-pass" type="password" placeholder="••••••••" autocomplete="current-password" />
+      </div>
+    </div>
+    <div id="auth-err" style="display:none;font-size:12px;color:#ff4444;background:rgba(255,68,68,0.08);border:1px solid rgba(255,68,68,0.2);padding:9px 13px;border-radius:8px;line-height:1.5"></div>
+    <button id="auth-submit" onclick="handleAuth()">Sign in</button>
+    <div style="text-align:center;font-size:12.5px;color:var(--muted)">
+      <span id="auth-toggle-text">Don't have an account?</span>
+      <button id="auth-toggle" onclick="toggleAuthMode()" style="background:none;border:none;color:var(--accent);font-size:12.5px;font-family:'Karla',sans-serif;cursor:pointer;padding:0 0 0 5px;font-weight:600">Sign up</button>
+    </div>
+  </div>
+</div>
+
 <!-- Loading screen -->
 <div id="loading">
   <div class="loading-brand">Play<em>Forge</em> Notes</div>
@@ -569,11 +643,15 @@
   <div id="sb-foot">
     <div style="display:flex;flex-direction:column;gap:2px">
       <span id="notes-count">Loading…</span>
-      <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--dim);opacity:0.5">v0.2</span>
+      <span id="user-label" style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--dim);opacity:0.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px"></span>
+      <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--dim);opacity:0.5">v0.3</span>
     </div>
     <div style="display:flex;gap:6px">
       <button class="icon-btn" id="refresh-btn" onclick="loadNotes()" title="Refresh notes">
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+      </button>
+      <button class="icon-btn" id="logout-btn" onclick="handleSignOut()" title="Sign out">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
       </button>
     </div>
   </div>
@@ -673,6 +751,10 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
 /* ══════════════════════════════
    STATE
 ══════════════════════════════ */
+let currentUser = null;
+let appBooted   = false;
+let authMode    = 'signin';
+
 let notes    = [];
 let activeId = null;
 let history  = [];
@@ -680,11 +762,10 @@ let aiOpen   = false;
 let histOpen = false;
 let saveTimer = null;
 
-const TRASH_KEY   = 'pf_deleted_notes';
+const trashKey   = () => `pf_deleted_notes_${currentUser?.id || 'anon'}`;
+const starredKey = () => `pf_starred_notes_${currentUser?.id || 'anon'}`;
 let deletedNotes  = [];
 let trashOpen     = false;
-
-const STARRED_KEY = 'pf_starred_notes';
 let starredIds    = new Set();
 
 let justPasted    = false;
@@ -715,6 +796,7 @@ async function loadNotes() {
   const { data, error } = await sb
     .from(TABLE)
     .select('*')
+    .eq('user_id', currentUser.id)
     .order('updated_at', { ascending: false });
 
   if (btn) btn.style.opacity = '1';
@@ -734,7 +816,7 @@ async function createNote(title = 'Untitled', content = '') {
 
   const { data, error } = await sb
     .from(TABLE)
-    .insert({ title, content })
+    .insert({ title, content, user_id: currentUser.id })
     .select()
     .single();
 
@@ -884,11 +966,11 @@ async function handleNewNote() { await createNote(); }
    TRASH
 ══════════════════════════════ */
 function loadDeletedNotes() {
-  try { deletedNotes = JSON.parse(localStorage.getItem(TRASH_KEY) || '[]'); } catch { deletedNotes = []; }
+  try { deletedNotes = JSON.parse(localStorage.getItem(trashKey()) || '[]'); } catch { deletedNotes = []; }
 }
 
 function saveDeletedNotes() {
-  localStorage.setItem(TRASH_KEY, JSON.stringify(deletedNotes));
+  localStorage.setItem(trashKey(), JSON.stringify(deletedNotes));
 }
 
 function renderTrash() {
@@ -927,11 +1009,11 @@ async function restoreNote(idx) {
    STARRED NOTES
 ══════════════════════════════ */
 function loadStarred() {
-  try { starredIds = new Set(JSON.parse(localStorage.getItem(STARRED_KEY) || '[]')); } catch { starredIds = new Set(); }
+  try { starredIds = new Set(JSON.parse(localStorage.getItem(starredKey()) || '[]')); } catch { starredIds = new Set(); }
 }
 
 function saveStarred() {
-  localStorage.setItem(STARRED_KEY, JSON.stringify([...starredIds]));
+  localStorage.setItem(starredKey(), JSON.stringify([...starredIds]));
 }
 
 function toggleStar(id) {
@@ -947,7 +1029,7 @@ const REMINDERS_TABLE = 'reminders';
 
 async function loadReminders() {
   try {
-    const { data } = await sb.from(REMINDERS_TABLE).select('*').eq('active', true).order('next_fire_at', { ascending: true });
+    const { data } = await sb.from(REMINDERS_TABLE).select('*').eq('user_id', currentUser.id).eq('active', true).order('next_fire_at', { ascending: true });
     reminders = data || [];
   } catch { reminders = []; }
   return reminders;
@@ -957,6 +1039,7 @@ async function saveReminder(message, remind_at, recurrence_days) {
   const { data, error } = await sb.from(REMINDERS_TABLE).insert({
     message, next_fire_at: remind_at,
     recurrence_days: recurrence_days || null, active: true,
+    user_id: currentUser.id,
   }).select().single();
   if (!error && data) reminders = [data, ...reminders];
   return !error;
@@ -1015,6 +1098,7 @@ async function snapshotNote(id, source) {
       title: note.title || '',
       content: note.content || '',
       source,
+      user_id: currentUser.id,
     });
   } catch(e) { console.warn('Snapshot failed:', e); }
 }
@@ -1370,24 +1454,124 @@ function speakText(text) {
 }
 
 /* ══════════════════════════════
+   AUTH
+══════════════════════════════ */
+function showAuthScreen() {
+  document.getElementById('auth-screen').classList.remove('hidden');
+}
+function hideAuthScreen() {
+  document.getElementById('auth-screen').classList.add('hidden');
+}
+
+function toggleAuthMode() {
+  authMode = authMode === 'signin' ? 'signup' : 'signin';
+  const isSignup = authMode === 'signup';
+  document.getElementById('auth-title').textContent       = isSignup ? 'Create account' : 'Sign in';
+  document.getElementById('auth-sub').textContent         = isSignup ? 'Create your PlayForge Notes account.' : 'Enter your email and password to continue.';
+  document.getElementById('auth-submit').textContent      = isSignup ? 'Create account' : 'Sign in';
+  document.getElementById('auth-toggle-text').textContent = isSignup ? 'Already have an account?' : "Don't have an account?";
+  document.getElementById('auth-toggle').textContent      = isSignup ? 'Sign in' : 'Sign up';
+  document.getElementById('auth-pass').setAttribute('autocomplete', isSignup ? 'new-password' : 'current-password');
+  setAuthErr('');
+}
+
+function setAuthErr(msg) {
+  const el = document.getElementById('auth-err');
+  if (msg) { el.textContent = msg; el.style.display = 'block'; }
+  else { el.style.display = 'none'; }
+}
+
+async function handleAuth() {
+  const email = document.getElementById('auth-email').value.trim();
+  const pass  = document.getElementById('auth-pass').value;
+  if (!email || !pass) { setAuthErr('Please enter your email and password.'); return; }
+  const btn = document.getElementById('auth-submit');
+  btn.disabled = true;
+  btn.textContent = authMode === 'signin' ? 'Signing in…' : 'Creating account…';
+  setAuthErr('');
+  try {
+    if (authMode === 'signin') {
+      const { error } = await sb.auth.signInWithPassword({ email, password: pass });
+      if (error) setAuthErr(error.message);
+    } else {
+      const { error } = await sb.auth.signUp({ email, password: pass });
+      if (error) setAuthErr(error.message);
+      else setAuthErr('Check your email to confirm your account, then sign in.');
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = authMode === 'signin' ? 'Sign in' : 'Create account';
+  }
+}
+
+async function handleSignOut() {
+  await sb.auth.signOut();
+}
+
+document.getElementById('auth-email').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('auth-pass').focus();
+});
+document.getElementById('auth-pass').addEventListener('keydown', e => {
+  if (e.key === 'Enter') handleAuth();
+});
+
+/* ══════════════════════════════
    BOOT
 ══════════════════════════════ */
-(async () => {
+async function initApp(user) {
+  currentUser = user;
+  const shortEmail = user.email ? user.email.split('@')[0] : '';
+  const labelEl = document.getElementById('user-label');
+  if (labelEl) labelEl.textContent = shortEmail;
+
+  if (appBooted) {
+    notes = []; reminders = []; activeId = null; history = [];
+    renderList(); showEmpty();
+    await loadNotes();
+    await loadReminders();
+    hideAuthScreen();
+    return;
+  }
+  appBooted = true;
   loadDeletedNotes();
   loadStarred();
   renderTrash();
   await loadNotes();
   await loadReminders();
   const loadEl = document.getElementById('loading');
-  loadEl.classList.add('fade');
-  setTimeout(() => loadEl.remove(), 350);
-  // Show voice controls if browser supports MediaRecorder (Chrome, Android, iOS 14.3+, Firefox)
+  if (loadEl) { loadEl.classList.add('fade'); setTimeout(() => loadEl.remove(), 350); }
+  hideAuthScreen();
   if (typeof MediaRecorder !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
     document.getElementById('mic-btn').classList.add('voice-ready');
   } else {
     document.getElementById('mic-btn').style.display = 'none';
     document.getElementById('voice-fab').style.display = 'none';
   }
+}
+
+(async () => {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) {
+    await initApp(session.user);
+  } else {
+    const loadEl = document.getElementById('loading');
+    if (loadEl) { loadEl.classList.add('fade'); setTimeout(() => loadEl.remove(), 350); }
+    showAuthScreen();
+  }
+
+  sb.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'SIGNED_IN' && session) {
+      await initApp(session.user);
+    } else if (event === 'SIGNED_OUT') {
+      appBooted = false;
+      currentUser = null;
+      notes = []; reminders = []; activeId = null; history = [];
+      renderList(); showEmpty();
+      const labelEl = document.getElementById('user-label');
+      if (labelEl) labelEl.textContent = '';
+      showAuthScreen();
+    }
+  });
 })();
 </script>
 </body>
