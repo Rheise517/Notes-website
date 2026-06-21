@@ -188,7 +188,7 @@
     #note-body {
       font-family: 'Karla', sans-serif; font-size: 15.5px; line-height: 1.78;
       color: var(--text); background: transparent; border: none; outline: none;
-      width: 100%; resize: none; min-height: calc(100vh - 280px);
+      width: 100%; resize: none; min-height: calc(100dvh - 280px);
     }
     #note-body::placeholder { color: var(--dim); }
     #empty-state {
@@ -527,9 +527,10 @@
       /* ── NOTE TITLE ── */
       #note-title { font-size: 26px; }
 
-      /* Prevent auto-zoom on Android (inputs must be 16px+) */
-      #note-body { font-size: 16px; min-height: 320px; }
-      #chat-in   { font-size: 16px; }
+      /* Prevent auto-zoom on iOS/Android (inputs must be 16px+) */
+      #note-body  { font-size: 16px; min-height: 320px; }
+      #chat-in    { font-size: 16px; }
+      #auth-email, #auth-pass { font-size: 16px; }
 
       /* ── TOUCH TARGETS ── */
       .icon-btn { width: 40px; height: 40px; border-radius: 9px; }
@@ -644,7 +645,7 @@
     <div style="display:flex;flex-direction:column;gap:2px">
       <span id="notes-count">Loading…</span>
       <span id="user-label" style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--dim);opacity:0.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px"></span>
-      <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--dim);opacity:0.5">v0.4</span>
+      <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--dim);opacity:0.5">v0.5</span>
     </div>
     <div style="display:flex;gap:6px">
       <button class="icon-btn" id="refresh-btn" onclick="loadNotes()" title="Refresh notes">
@@ -1440,7 +1441,7 @@ function _updateMicUI() {
 function voiceFab() {
   if (isRecording) { stopMic(); return; }
   if (!aiOpen) toggleAI();
-  setTimeout(startMic, 300);
+  startMic();
 }
 
 function toggleVoiceMode() {
