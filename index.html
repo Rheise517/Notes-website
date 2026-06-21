@@ -644,7 +644,7 @@
     <div style="display:flex;flex-direction:column;gap:2px">
       <span id="notes-count">Loading…</span>
       <span id="user-label" style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--dim);opacity:0.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px"></span>
-      <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--dim);opacity:0.5">v0.3</span>
+      <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--dim);opacity:0.5">v0.4</span>
     </div>
     <div style="display:flex;gap:6px">
       <button class="icon-btn" id="refresh-btn" onclick="loadNotes()" title="Refresh notes">
@@ -1051,6 +1051,10 @@ async function cancelReminder(id) {
   return !error;
 }
 
+function recurrenceToDays(recurrence) {
+  return { 'daily': 1, 'every-other-day': 2, 'weekly': 7, 'biweekly': 14 }[recurrence] || null;
+}
+
 function buildGoogleCalendarUrl(message, remind_at, recurrence_days) {
   const dt  = new Date(remind_at);
   const pad = n => String(n).padStart(2, '0');
@@ -1264,10 +1268,11 @@ async function sendMsg() {
           const gone = await deleteNote(act.id);
           if (gone) applied.push({ icon: '🗑', label: `Deleted "${gone.title}"` });
         } else if (act.type === 'create_reminder') {
-          const ok = await saveReminder(act.message, act.remind_at, act.recurrence_days || null);
+          const _recDays = recurrenceToDays(act.recurrence);
+          const ok = await saveReminder(act.message, act.datetime, _recDays);
           if (ok) {
-            const calUrl = buildGoogleCalendarUrl(act.message, act.remind_at, act.recurrence_days || null);
-            applied.push({ icon: '⏰', label: `${fmtReminder(act.remind_at, act.recurrence_days)} — tap to add to Google Calendar`, href: calUrl });
+            const calUrl = buildGoogleCalendarUrl(act.message, act.datetime, _recDays);
+            applied.push({ icon: '⏰', label: `${fmtReminder(act.datetime, _recDays)} — tap to add to Google Calendar`, href: calUrl });
           }
         } else if (act.type === 'cancel_reminder') {
           const ok = await cancelReminder(act.id);
