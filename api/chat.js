@@ -17,10 +17,12 @@ Emit only these action types. Match these shapes exactly:
 - delete_note   → {"type": "delete_note", "id": "..."}
 - create_reminder → {"type": "create_reminder", "message": "...", "datetime": "<local ISO 8601>", "recurrence": "one-time|daily|every-other-day|weekly|biweekly"}
 - cancel_reminder → {"type": "cancel_reminder", "id": "..."}
+- create_todo   → {"type": "create_todo", "title": "...", "due_at": "<local ISO 8601 or null>", "note_id": "<existing note id | 'last_created' | null>"}
 
 Rules:
 - For update_note, delete_note, and cancel_reminder, use only ids that appear in the context you were given. Never invent or guess an id.
 - Include an action only when state actually changes. Listing or describing is not an action.
+- note_id in create_todo: use an existing note's id if the task relates to that note; use "last_created" if you are also creating a note in this same response; use null otherwise.
 
 ## Reminders
 - Compute "datetime" as a local ISO 8601 value derived from the current date/time above.
@@ -54,6 +56,13 @@ Whenever a note involves numbers (finances, workouts, scores, durations, tallies
 - For date/time math ("in 3 days", "every other day", next weekly fire), compute from the injected current datetime, mind month/year boundaries, and confirm the resulting day-of-week.
 - If a value is missing or input is ambiguous, say so in "message" rather than inventing a number.
 
+## To-Do Tasks
+- Proactively create a todo whenever the user mentions a follow-up action, deadline, or task to revisit — even if they don't say "add to my to-do list."
+- Keep todo titles concise and action-oriented (verb + object): "Revise Bob Billy quote", "Send updated estimate", "Follow up with client".
+- due_at: compute from context — "by end of day" = today at 17:00, "in 4 hours" = current time + 4h, "tomorrow morning" = tomorrow at 09:00. Use null if no time is implied.
+- If the todo relates to a note you are also creating in this same response, set note_id to "last_created". If it relates to an existing note, use that note's id. Otherwise null.
+- A reminder (calendar event) and a todo serve different purposes — create both when appropriate: the reminder fires at a specific time, the todo is a persistent checklist item.
+
 ## Ambiguity & safety
 - If a request is unclear, or would delete/overwrite data and the target isn't certain, ask one short clarifying question in "message" with actions: []. Don't guess at destructive actions.`;
 
@@ -69,7 +78,7 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set — add it in Vercel environment variables' });
   }
 
-  const { messages = [], notes = [], reminders = [], clientDateTime = '' } = req.body || {};
+  const { messages = [], notes = [], reminders = [], todos = [], clientDateTime = '' } = req.body || {};
 
   const notesCtx = notes.length
     ? `\n\nCurrent notes (${notes.length}):\n${JSON.stringify(
@@ -85,7 +94,14 @@ module.exports = async function handler(req, res) {
       )}`
     : '\n\nNo active reminders.';
 
-  const system = SYSTEM_PROMPT.replace('{DATETIME}', clientDateTime || new Date().toLocaleString()) + notesCtx + remindersCtx;
+  const todosCtx = todos.length
+    ? `\n\nActive to-do tasks (${todos.length}):\n${JSON.stringify(
+        todos.map(t => ({ id: t.id, title: t.title, due_at: t.due_at, note_id: t.note_id })),
+        null, 2
+      )}`
+    : '\n\nNo active to-do tasks.';
+
+  const system = SYSTEM_PROMPT.replace('{DATETIME}', clientDateTime || new Date().toLocaleString()) + notesCtx + remindersCtx + todosCtx;
 
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
