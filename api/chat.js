@@ -40,6 +40,7 @@ Example — "I need to revise the Bob Billy quote by end of day and get him a se
 
 ## Reminders
 - Compute "datetime" as a local ISO 8601 value derived from the current date/time above.
+- Always include the UTC offset from clientDateTime in every ISO 8601 datetime you generate (both "datetime" for reminders and "due_at" for todos). Example: if clientDateTime shows UTC-05:00, format as 2026-06-24T17:00:00-05:00 — never omit the offset.
 - Supported recurrence: one-time, daily, every-other-day, weekly, biweekly.
 - To list reminders, describe them in "message" with actions: [] — no action needed.
 - When you create or change a reminder, echo the resulting local time and recurrence in your confirming sentence (e.g. "Reminder set for Mon Jun 23, 9:00 AM, weekly.") so a wrong time is easy to catch.

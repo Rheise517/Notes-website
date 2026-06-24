@@ -1539,7 +1539,14 @@ async function sendMsg() {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: history, notes, reminders, todos: todos.filter(t => !t.completed), clientDateTime: new Date().toLocaleString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric', hour:'numeric', minute:'2-digit', hour12:true }) }),
+      body: JSON.stringify({ messages: history, notes, reminders, todos: todos.filter(t => !t.completed), clientDateTime: (() => {
+        const now = new Date();
+        const off = -now.getTimezoneOffset();
+        const s   = off >= 0 ? '+' : '-';
+        const hh  = String(Math.floor(Math.abs(off) / 60)).padStart(2, '0');
+        const mm  = String(Math.abs(off) % 60).padStart(2, '0');
+        return now.toLocaleString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric', hour:'numeric', minute:'2-digit', hour12:true }) + ` (UTC${s}${hh}:${mm})`;
+      })() }),
     });
     const data = await res.json();
     typing.remove();
